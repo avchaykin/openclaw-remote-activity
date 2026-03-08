@@ -2,8 +2,7 @@ class OpenclawActivityServer < Formula
   desc "Local API server for OpenClaw agent activity monitoring"
   homepage "https://github.com/avchaykin/openclaw-remote-activity"
   url "https://github.com/avchaykin/openclaw-remote-activity.git",
-      tag:      "v0.1.0",
-      revision: "HEAD"
+      tag: "v0.1.0"
   license "MIT"
 
   depends_on "node"
