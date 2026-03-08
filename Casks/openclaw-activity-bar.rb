@@ -10,8 +10,6 @@ cask "openclaw-activity-bar" do
   depends_on macos: ">= :sonoma"
 
   # Build from source during cask install (no notarized app artifact yet)
-  stage_only true
-
   installer script: {
     executable: "/bin/bash",
     args: [
