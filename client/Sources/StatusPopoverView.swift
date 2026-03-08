@@ -58,21 +58,32 @@ struct StatusPopoverView: View {
 
             // Footer
             Divider()
-            HStack {
-                Text("Gateway: \(state.connected ? "connected" : "disconnected")")
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text("Gateway: \(state.connected ? "connected" : "disconnected")")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                    Spacer()
+                    Button("Quit") {
+                        NSApp.terminate(nil)
+                    }
+                    .font(.caption2)
+                    .buttonStyle(.plain)
+                    .foregroundColor(.secondary)
+                }
+
+                Text("API: \(monitor.serverURL)")
                     .font(.caption2)
                     .foregroundColor(.secondary)
-                Spacer()
-                Button("Quit") {
-                    NSApp.terminate(nil)
-                }
-                .font(.caption2)
-                .buttonStyle(.plain)
-                .foregroundColor(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Text("Source: \(monitor.serverURLSource)")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
             }
         }
         .padding(16)
-        .frame(width: 300, height: 220)
+        .frame(width: 320, height: 250)
         .onReceive(timer) { _ in
             state = monitor.state
         }

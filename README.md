@@ -1,88 +1,129 @@
 # OpenClaw Remote Activity Monitor
 
-Real-time activity monitor for [OpenClaw](https://openclaw.ai) agents — a local API server + macOS menu bar client.
+Real-time activity monitor for [OpenClaw](https://openclaw.ai):
 
-![demo](https://img.shields.io/badge/macOS-14%2B-blue) ![license](https://img.shields.io/badge/license-MIT-green)
+- a local API server (`openclaw-activity-server`)
+- a macOS menu bar client (`OpenClawActivity`)
 
-## Components
-
-### 🖥 Activity Server (`openclaw-activity-server`)
-
-A lightweight Node.js service that connects to your OpenClaw Gateway via WebSocket and exposes a simple REST API with current agent activity status.
-
-- Connects to Gateway WS as an operator
-- Tracks active sessions, running tools, pending requests
-- Exposes `GET /api/status` on `localhost:19789`
-
-### 🔴 Menu Bar Client (`OpenClawActivity.app`)
-
-A native macOS menu bar app that shows agent activity at a glance.
-
-- **Red pulsing dot** — agent is actively processing (tool running, generating response)
-- **Gray dot** — all sessions idle
-- Click to see session details
-- Minimal resource usage (~5MB RAM)
-
-## Installation
-
-### Via Homebrew
-
-```bash
-# Add the tap
-brew tap avchaykin/openclaw-remote-activity https://github.com/avchaykin/openclaw-remote-activity
-
-# Install server + client
-brew install openclaw-activity-server
-brew install --cask openclaw-activity-bar
-
-# Start the server as a background service
-brew services start openclaw-activity-server
-
-# Launch the menu bar app (auto-starts on login)
-open /Applications/OpenClawActivity.app
-```
-
-### Manual
-
-```bash
-# Server
-cd server && npm install && npm run build
-OPENCLAW_GATEWAY_URL=ws://127.0.0.1:18789 \
-OPENCLAW_GATEWAY_TOKEN=your_token \
-  node dist/index.js
-
-# Client
-cd client && swift build -c release
-cp .build/release/OpenClawActivity /usr/local/bin/
-```
-
-## Configuration
+## Features
 
 ### Server
 
-Environment variables (or `.env` file):
+- Tracks OpenClaw session activity
+- Exposes simple HTTP endpoints:
+  - `GET /api/status`
+  - `GET /api/health`
+  - `GET /api/stream` (SSE)
+- WebSocket gateway mode (best effort)
+- Automatic CLI fallback mode (`openclaw status --json`) when WS auth is unavailable
 
-| Variable | Default | Description |
-|---|---|---|
-| `OPENCLAW_GATEWAY_URL` | `ws://127.0.0.1:18789` | Gateway WebSocket URL |
-| `OPENCLAW_GATEWAY_TOKEN` | — | Gateway auth token |
-| `ACTIVITY_PORT` | `19789` | HTTP API port |
-| `ACTIVITY_POLL_INTERVAL` | `3000` | Status poll interval (ms) |
+### Menu bar client
+
+- **Blinking red dot** = active session(s)
+- **Gray dot** = idle
+- **Yellow dot** = disconnected from API server
+- Popover shows active session summary + current API URL and where that URL came from
+
+---
+
+## Install with Homebrew
+
+```bash
+brew tap avchaykin/openclaw-remote-activity https://github.com/avchaykin/openclaw-remote-activity
+
+brew install openclaw-activity-server
+brew install openclaw-activity-bar
+```
+
+Start server as a background service:
+
+```bash
+brew services start openclaw-activity-server
+```
+
+Launch client:
+
+```bash
+openclaw-activity-bar
+# or (if app bundle is present)
+open /Applications/OpenClawActivity.app
+```
+
+> Note: `openclaw-activity-bar` is built with Swift. Xcode Command Line Tools are enough.
+
+---
+
+## Manual install
+
+### Server
+
+```bash
+cd server
+npm install
+npm run build
+
+# Local-only API:
+node dist/index.js
+
+# LAN-accessible API:
+ACTIVITY_BIND_HOST=0.0.0.0 node dist/index.js
+```
 
 ### Client
 
-The menu bar app connects to `http://localhost:19789` by default. To change:
-
 ```bash
-defaults write com.openclaw.activity serverURL "http://localhost:19789"
+cd client
+swift build -c release --disable-sandbox
+./.build/release/OpenClawActivity
 ```
 
-## API
+---
+
+## Configuration
+
+### Server environment variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `OPENCLAW_GATEWAY_URL` | `ws://127.0.0.1:18789` | OpenClaw Gateway WS URL |
+| `OPENCLAW_GATEWAY_TOKEN` | empty | Gateway auth token |
+| `ACTIVITY_PORT` | `19789` | API port |
+| `ACTIVITY_BIND_HOST` | `0.0.0.0` | Bind host (`127.0.0.1` for local-only) |
+| `ACTIVITY_POLL_INTERVAL` | `3000` | Poll interval (ms) |
+| `ACTIVITY_THRESHOLD_MS` | `15000` | Session age threshold considered “active” |
+
+### Client API URL selection order
+
+The client resolves API URL in this order:
+
+1. `OPENCLAW_ACTIVITY_SERVER_URL` environment variable
+2. `defaults` domain `com.openclaw.activity` key `serverURL`
+3. standard defaults key `serverURL`
+4. fallback: `http://localhost:19789`
+
+Set a remote server URL:
+
+```bash
+defaults write com.openclaw.activity serverURL "http://192.168.1.121:19789"
+```
+
+Restart client after changes.
+
+---
+
+## API examples
+
+### `GET /api/health`
+
+```json
+{ "ok": true, "gateway": "connected", "uptime": 3600, "mode": "cli-fallback" }
+```
 
 ### `GET /api/status`
 
 ```json
 {
+  "connected": true,
   "active": true,
   "sessions": [
     {
@@ -90,7 +131,8 @@ defaults write com.openclaw.activity serverURL "http://localhost:19789"
       "agentId": "main",
       "kind": "direct",
       "ageMs": 5200,
-      "active": true
+      "active": true,
+      "model": "claude-opus-4-6"
     }
   ],
   "summary": {
@@ -98,15 +140,12 @@ defaults write com.openclaw.activity serverURL "http://localhost:19789"
     "activeSessions": 1,
     "idleSessions": 2
   },
-  "ts": 1772977633446
+  "ts": 1772977633446,
+  "gatewayEvents": 42
 }
 ```
 
-### `GET /api/health`
-
-```json
-{ "ok": true, "gateway": "connected", "uptime": 3600 }
-```
+---
 
 ## License
 

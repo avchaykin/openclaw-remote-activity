@@ -49,7 +49,8 @@ extension ActivityState {
 // MARK: - Monitor
 
 final class ActivityMonitor {
-    private let serverURL: String
+    let serverURL: String
+    let serverURLSource: String
     private let pollInterval: TimeInterval
     private var timer: Timer?
     private var eventSource: URLSessionDataTask?
@@ -64,8 +65,24 @@ final class ActivityMonitor {
 
     init() {
         let defaults = UserDefaults.standard
-        self.serverURL = defaults.string(forKey: "serverURL") ?? "http://localhost:19789"
+        let appDefaults = UserDefaults(suiteName: "com.openclaw.activity")
+
+        if let envURL = ProcessInfo.processInfo.environment["OPENCLAW_ACTIVITY_SERVER_URL"], !envURL.isEmpty {
+            self.serverURL = envURL
+            self.serverURLSource = "env:OPENCLAW_ACTIVITY_SERVER_URL"
+        } else if let suiteURL = appDefaults?.string(forKey: "serverURL"), !suiteURL.isEmpty {
+            self.serverURL = suiteURL
+            self.serverURLSource = "defaults:com.openclaw.activity"
+        } else if let standardURL = defaults.string(forKey: "serverURL"), !standardURL.isEmpty {
+            self.serverURL = standardURL
+            self.serverURLSource = "defaults:standard"
+        } else {
+            self.serverURL = "http://localhost:19789"
+            self.serverURLSource = "default"
+        }
+
         self.pollInterval = defaults.double(forKey: "pollInterval").nonZero ?? 2.0
+        print("[OpenClawActivity] serverURL=\(self.serverURL) source=\(self.serverURLSource)")
     }
 
     func start() {

@@ -52,13 +52,23 @@ const startTime = Date.now();
 // ---------------------------------------------------------------------------
 
 const deviceKeyPair = crypto.generateKeyPairSync("ed25519");
-const pubKeyRaw = deviceKeyPair.publicKey.export({ type: "spki", format: "der" });
-const deviceId = crypto.createHash("sha256").update(pubKeyRaw).digest("hex").slice(0, 32);
+const pubKeyDer = deviceKeyPair.publicKey.export({ type: "spki", format: "der" });
+// Ed25519 SPKI DER = 12-byte prefix + 32-byte raw key
+const ED25519_SPKI_PREFIX_LEN = 12;
+const pubKeyRaw = pubKeyDer.subarray(ED25519_SPKI_PREFIX_LEN);
+// Device ID = SHA-256 of raw 32-byte public key (full hex, not truncated)
+const deviceId = crypto.createHash("sha256").update(pubKeyRaw).digest("hex");
 
 function signPayload(payload: string): string {
   const sig = crypto.sign(null, Buffer.from(payload), deviceKeyPair.privateKey);
-  return sig.toString("base64");
+  return base64UrlEncode(sig);
 }
+
+function base64UrlEncode(buf: Buffer): string {
+  return buf.toString("base64").replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/g, "");
+}
+
+const publicKeyBase64Url = base64UrlEncode(Buffer.from(pubKeyRaw));
 
 // ---------------------------------------------------------------------------
 // Gateway WS connection
@@ -167,21 +177,21 @@ function sendConnect(challenge: { nonce: string; ts: number }): void {
   const signedAt = Date.now();
   const nonce = challenge.nonce;
 
-  // v3 signature payload
-  const payloadParts = [
-    `device:${deviceId}`,
-    `client:openclaw-activity-server`,
-    `role:operator`,
-    `scopes:operator.read`,
-    `token:${GATEWAY_TOKEN}`,
-    `nonce:${nonce}`,
-    `platform:macos`,
-    `deviceFamily:server`,
-  ];
-  const signaturePayload = payloadParts.join("\n");
+  // v3 signature payload: fields joined by "|"
+  const signaturePayload = [
+    "v3",
+    deviceId,
+    "gateway-client",   // clientId
+    "backend",           // clientMode
+    "operator",          // role
+    "operator.read",     // scopes (comma-separated)
+    String(signedAt),    // signedAtMs
+    GATEWAY_TOKEN,       // token
+    nonce,               // nonce from challenge
+    "macos",             // platform
+    "server",            // deviceFamily
+  ].join("|");
   const signature = signPayload(signaturePayload);
-  const publicKeyBase64 = pubKeyRaw.toString("base64");
-
   const connectMsg = {
     type: "req",
     id: nextId(),
@@ -190,10 +200,10 @@ function sendConnect(challenge: { nonce: string; ts: number }): void {
       minProtocol: 3,
       maxProtocol: 3,
       client: {
-        id: "openclaw-activity-server",
+        id: "gateway-client",
         version: "0.1.0",
         platform: "macos",
-        mode: "operator",
+        mode: "backend",
       },
       role: "operator",
       scopes: ["operator.read"],
@@ -205,7 +215,7 @@ function sendConnect(challenge: { nonce: string; ts: number }): void {
       userAgent: "openclaw-activity-server/0.1.0",
       device: {
         id: deviceId,
-        publicKey: publicKeyBase64,
+        publicKey: publicKeyBase64Url,
         signature,
         signedAt,
         nonce,
@@ -410,8 +420,10 @@ const server = http.createServer((req, res) => {
 // Startup
 // ---------------------------------------------------------------------------
 
-server.listen(PORT, "127.0.0.1", () => {
-  console.log(`[server] listening on http://127.0.0.1:${PORT}`);
+const BIND_HOST = process.env.ACTIVITY_BIND_HOST ?? "0.0.0.0";
+
+server.listen(PORT, BIND_HOST, () => {
+  console.log(`[server] listening on http://${BIND_HOST}:${PORT}`);
   console.log(`[server] endpoints: /api/status, /api/health, /api/stream`);
 
   if (GATEWAY_TOKEN) {
