@@ -91,7 +91,7 @@ final class ActivityMonitor {
         URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
             guard let self else { return }
 
-            if let error {
+            if error != nil {
                 DispatchQueue.main.async {
                     self.state = .disconnected
                 }
