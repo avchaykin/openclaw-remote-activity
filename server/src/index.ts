@@ -27,6 +27,13 @@ interface SessionInfo {
   model?: string;
 }
 
+interface ToolActivity {
+  ts: number;
+  sessionKey?: string;
+  tool: string;
+  phase: string;
+}
+
 interface ActivityState {
   connected: boolean;
   active: boolean;
@@ -34,6 +41,8 @@ interface ActivityState {
   summary: { totalSessions: number; activeSessions: number; idleSessions: number };
   ts: number;
   gatewayEvents: number;
+  toolLog: ToolActivity[];
+  mode: "websocket" | "cli-fallback";
 }
 
 const state: ActivityState = {
@@ -43,6 +52,8 @@ const state: ActivityState = {
   summary: { totalSessions: 0, activeSessions: 0, idleSessions: 0 },
   ts: Date.now(),
   gatewayEvents: 0,
+  toolLog: [],
+  mode: "cli-fallback",
 };
 
 const startTime = Date.now();
@@ -129,6 +140,26 @@ function scheduleReconnect(): void {
   }, delay);
 }
 
+function pushToolActivity(entry: ToolActivity): void {
+  state.toolLog.unshift(entry);
+  state.toolLog = state.toolLog
+    .filter((item, idx, arr) => idx === arr.findIndex((x) => x.ts === item.ts && x.tool === item.tool && x.phase === item.phase && x.sessionKey === item.sessionKey))
+    .slice(0, 8);
+}
+
+function extractToolName(payload: any): string | null {
+  return (
+    payload?.toolName ??
+    payload?.tool ??
+    payload?.name ??
+    payload?.recipient_name ??
+    payload?.request?.recipient_name ??
+    payload?.call?.toolName ??
+    payload?.call?.tool ??
+    null
+  );
+}
+
 function handleGatewayMessage(msg: any): void {
   state.gatewayEvents++;
 
@@ -143,6 +174,7 @@ function handleGatewayMessage(msg: any): void {
   if (msg.type === "res" && msg.payload?.type === "hello-ok") {
     console.log("[gateway] connected as operator ✓");
     state.connected = true;
+    state.mode = "websocket";
 
     // Start polling sessions
     startPolling();
@@ -167,6 +199,17 @@ function handleGatewayMessage(msg: any): void {
     if (msg.event?.includes("agent") || msg.event?.includes("tool") || msg.event?.includes("run")) {
       state.active = true;
       state.ts = Date.now();
+    }
+
+    if (msg.event?.includes("tool")) {
+      const tool = extractToolName(msg.payload) ?? msg.event;
+      const phase = String(msg.event).split(".").slice(-1)[0] ?? "event";
+      pushToolActivity({
+        ts: Date.now(),
+        sessionKey: msg.payload?.sessionKey ?? msg.payload?.key,
+        tool,
+        phase,
+      });
     }
   }
 }
@@ -303,6 +346,7 @@ let cliPollTimer: ReturnType<typeof setInterval> | null = null;
 function startCliFallback(): void {
   if (cliPollTimer) return;
   useCliFallback = true;
+  state.mode = "cli-fallback";
   console.log("[fallback] using CLI polling");
   pollCli();
   cliPollTimer = setInterval(pollCli, POLL_INTERVAL);

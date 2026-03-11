@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 struct StatusPopoverView: View {
     let monitor: ActivityMonitor
@@ -36,10 +37,29 @@ struct StatusPopoverView: View {
                 // Summary
                 HStack(spacing: 16) {
                     StatBlock(value: "\(state.summary.totalSessions)", label: "Sessions")
-                    StatBlock(value: "\(state.summary.activeSessions)", label: "Active", color: state.summary.activeSessions > 0 ? .red : .secondary)
+                    StatBlock(value: "\(state.summary.activeSessions)", label: "Active", color: state.summary.activeSessions > 0 ? Color(nsColor: .activityDarkGreen) : .secondary)
                     StatBlock(value: "\(state.summary.idleSessions)", label: "Idle")
                 }
                 .frame(maxWidth: .infinity)
+
+                Divider()
+                Text("Tool Activity")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+
+                if state.mode == "cli-fallback" {
+                    Text("Tool log available in WebSocket mode (with OPENCLAW_GATEWAY_TOKEN)")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                } else if state.toolLog.isEmpty {
+                    Text("No recent tool activity")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                } else {
+                    ForEach(state.toolLog.prefix(4)) { item in
+                        ToolLogRow(item: item)
+                    }
+                }
 
                 // Active sessions
                 if !state.sessions.filter({ $0.active }).isEmpty {
@@ -83,7 +103,7 @@ struct StatusPopoverView: View {
             }
         }
         .padding(16)
-        .frame(width: 320, height: 250)
+        .frame(width: 360, height: 330)
         .onReceive(timer) { _ in
             state = monitor.state
         }
@@ -110,9 +130,9 @@ struct StatusBadge: View {
     }
 
     private var badgeColor: Color {
-        if !state.connected { return .yellow }
-        if state.active { return .red }
-        return .gray
+        if !state.connected { return .red }
+        if state.active { return Color(nsColor: .activityDarkGreen) }
+        return .white
     }
 
     private var badgeText: String {
@@ -139,13 +159,39 @@ struct StatBlock: View {
     }
 }
 
+struct ToolLogRow: View {
+    let item: ToolActivity
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "wrench.and.screwdriver.fill")
+                .font(.caption2)
+                .foregroundColor(Color(nsColor: .activityDarkGreen))
+            Text("\(item.tool) · \(item.phase)")
+                .font(.caption2)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Spacer()
+            Text(formatAge(item.ts))
+                .font(.caption2)
+                .foregroundColor(.secondary)
+        }
+    }
+
+    private func formatAge(_ ts: Int) -> String {
+        let seconds = max(0, Int(Date().timeIntervalSince1970) - (ts / 1000))
+        if seconds < 60 { return "\(seconds)s" }
+        return "\(seconds / 60)m"
+    }
+}
+
 struct SessionRow: View {
     let session: SessionInfo
 
     var body: some View {
         HStack {
             Circle()
-                .fill(.red)
+                .fill(Color(nsColor: .activityDarkGreen))
                 .frame(width: 6, height: 6)
 
             VStack(alignment: .leading, spacing: 1) {
@@ -171,4 +217,8 @@ struct SessionRow: View {
         let minutes = seconds / 60
         return "\(minutes)m ago"
     }
+}
+
+extension NSColor {
+    static let activityDarkGreen = NSColor(calibratedRed: 0.0, green: 0.45, blue: 0.2, alpha: 1.0)
 }

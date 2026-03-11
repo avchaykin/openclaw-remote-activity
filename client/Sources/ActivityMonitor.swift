@@ -19,6 +19,15 @@ struct ActivitySummary: Codable {
     let idleSessions: Int
 }
 
+struct ToolActivity: Codable, Identifiable {
+    let ts: Int
+    let sessionKey: String?
+    let tool: String
+    let phase: String
+
+    var id: String { "\(ts)-\(tool)-\(phase)-\(sessionKey ?? "")" }
+}
+
 struct ActivityState: Codable {
     let connected: Bool
     let active: Bool
@@ -26,6 +35,8 @@ struct ActivityState: Codable {
     let summary: ActivitySummary
     let ts: Int
     let gatewayEvents: Int
+    let toolLog: [ToolActivity]
+    let mode: String?
 }
 
 struct HealthResponse: Codable {
@@ -42,7 +53,9 @@ extension ActivityState {
         sessions: [],
         summary: ActivitySummary(totalSessions: 0, activeSessions: 0, idleSessions: 0),
         ts: 0,
-        gatewayEvents: 0
+        gatewayEvents: 0,
+        toolLog: [],
+        mode: nil
     )
 }
 

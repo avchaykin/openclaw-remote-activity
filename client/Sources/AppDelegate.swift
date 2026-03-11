@@ -5,8 +5,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private var activityMonitor: ActivityMonitor!
     private var popover: NSPopover!
-    private var animationTimer: Timer?
-    private var isBlinkOn = true
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Hide dock icon — menu bar only
@@ -19,7 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Create popover for details
         popover = NSPopover()
-        popover.contentSize = NSSize(width: 300, height: 200)
+        popover.contentSize = NSSize(width: 360, height: 330)
         popover.behavior = .transient
         popover.contentViewController = NSHostingController(
             rootView: StatusPopoverView(monitor: activityMonitor)
@@ -86,31 +84,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func handleStateChange() {
-        let wasActive = animationTimer != nil
-        let isActive = activityMonitor.state.active
-
-        if isActive && !wasActive {
-            startBlinking()
-        } else if !isActive && wasActive {
-            stopBlinking()
-        }
-
-        updateIcon()
-    }
-
-    private func startBlinking() {
-        animationTimer?.invalidate()
-        isBlinkOn = true
-        animationTimer = Timer.scheduledTimer(withTimeInterval: 0.6, repeats: true) { [weak self] _ in
-            self?.isBlinkOn.toggle()
-            self?.updateIcon()
-        }
-    }
-
-    private func stopBlinking() {
-        animationTimer?.invalidate()
-        animationTimer = nil
-        isBlinkOn = true
         updateIcon()
     }
 
@@ -121,19 +94,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let isConnected = activityMonitor.state.connected
 
         if !isConnected {
-            // Disconnected — yellow dot
-            button.image = createDotImage(color: .systemYellow, filled: true)
+            // Disconnected — red dot
+            button.image = createDotImage(color: .systemRed, filled: true)
             button.toolTip = "OpenClaw: disconnected from server"
         } else if isActive {
-            // Active — red dot (blinking)
-            let color: NSColor = isBlinkOn ? .systemRed : .systemRed.withAlphaComponent(0.3)
-            button.image = createDotImage(color: color, filled: true)
+            // Active — dark green dot
+            button.image = createDotImage(color: .activityDarkGreen, filled: true)
             let count = activityMonitor.state.summary.activeSessions
             button.toolTip = "OpenClaw: \(count) active session\(count == 1 ? "" : "s")"
         } else {
-            // Idle — gray dot
-            button.image = createDotImage(color: .systemGray, filled: true)
-            button.toolTip = "OpenClaw: idle"
+            // Connected + idle — white dot
+            button.image = createDotImage(color: .white, filled: true)
+            button.toolTip = "OpenClaw: connected (idle)"
         }
     }
 
