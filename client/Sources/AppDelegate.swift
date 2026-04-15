@@ -5,6 +5,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private var activityMonitor: ActivityMonitor!
     private var popover: NSPopover!
+    private var statusMenu: NSMenu!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Hide dock icon — menu bar only
@@ -26,6 +27,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         updateIcon()
 
         if let button = statusItem.button {
+            button.sendAction(on: [.leftMouseUp, .rightMouseUp])
             button.action = #selector(togglePopover)
             button.target = self
         }
@@ -53,17 +55,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         detailsItem.target = self
         menu.addItem(detailsItem)
 
+        let configureItem = NSMenuItem(title: "Configure API URL...", action: #selector(configureServerURL), keyEquivalent: ",")
+        configureItem.target = self
+        menu.addItem(configureItem)
+
+        let resetItem = NSMenuItem(title: "Reset API URL (localhost)", action: #selector(resetServerURL), keyEquivalent: "")
+        resetItem.target = self
+        menu.addItem(resetItem)
+
         menu.addItem(NSMenuItem.separator())
 
         let quitItem = NSMenuItem(title: "Quit", action: #selector(quit), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
 
-        // Right-click shows menu, left-click shows popover
+        statusMenu = menu
         statusItem.menu = nil
     }
 
     @objc private func togglePopover() {
+        if let event = NSApp.currentEvent, event.type == .rightMouseUp {
+            if let statusMenu {
+                statusItem.menu = statusMenu
+                statusItem.button?.performClick(nil)
+                statusItem.menu = nil
+            }
+            return
+        }
+
         if let button = statusItem.button {
             if popover.isShown {
                 popover.performClose(nil)
@@ -77,6 +96,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func showDetails() {
         togglePopover()
+    }
+
+    @objc private func configureServerURL() {
+        let alert = NSAlert()
+        alert.messageText = "Configure Activity Server URL"
+        alert.informativeText = "Example: http://aurora.tail2a0d07.ts.net:19789"
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "Save")
+        alert.addButton(withTitle: "Cancel")
+
+        let textField = NSTextField(frame: NSRect(x: 0, y: 0, width: 340, height: 24))
+        textField.stringValue = activityMonitor.serverURL
+        alert.accessoryView = textField
+
+        NSApp.activate(ignoringOtherApps: true)
+        let response = alert.runModal()
+        if response == .alertFirstButtonReturn {
+            activityMonitor.setServerURL(textField.stringValue)
+            updateIcon()
+        }
+    }
+
+    @objc private func resetServerURL() {
+        activityMonitor.clearServerURLOverride()
+        updateIcon()
     }
 
     @objc private func quit() {

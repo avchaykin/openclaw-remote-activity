@@ -23,6 +23,7 @@ Real-time activity monitor for [OpenClaw](https://openclaw.ai):
 - **Gray dot** = idle
 - **Yellow dot** = disconnected from API server
 - Popover shows active session summary + current API URL and where that URL came from
+- Right-click the menu bar icon to open menu actions, including **Configure API URL...**
 
 ---
 
@@ -98,8 +99,9 @@ The client resolves API URL in this order:
 
 1. `OPENCLAW_ACTIVITY_SERVER_URL` environment variable
 2. `defaults` domain `com.openclaw.activity` key `serverURL`
-3. standard defaults key `serverURL`
-4. fallback: `http://localhost:19789`
+3. `defaults` domains `OpenClawActivity` and `openclaw-activity-bar` key `serverURL`
+4. standard defaults key `serverURL`
+5. fallback: `http://localhost:19789`
 
 Set a remote server URL:
 

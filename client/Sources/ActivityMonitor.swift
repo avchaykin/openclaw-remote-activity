@@ -62,11 +62,19 @@ extension ActivityState {
 // MARK: - Monitor
 
 final class ActivityMonitor {
-    let serverURL: String
-    let serverURLSource: String
+    private(set) var serverURL: String
+    private(set) var serverURLSource: String
     private let pollInterval: TimeInterval
     private var timer: Timer?
     private var eventSource: URLSessionDataTask?
+
+    private static let configKey = "serverURL"
+    private static let defaultServerURL = "http://localhost:19789"
+    private static let preferredDomains = [
+        "com.openclaw.activity",
+        "OpenClawActivity",
+        "openclaw-activity-bar"
+    ]
 
     var state: ActivityState = .disconnected {
         didSet {
@@ -77,25 +85,65 @@ final class ActivityMonitor {
     var onStateChange: (() -> Void)?
 
     init() {
-        let defaults = UserDefaults.standard
-        let appDefaults = UserDefaults(suiteName: "com.openclaw.activity")
+        self.serverURL = Self.defaultServerURL
+        self.serverURLSource = "default"
 
-        if let envURL = ProcessInfo.processInfo.environment["OPENCLAW_ACTIVITY_SERVER_URL"], !envURL.isEmpty {
-            self.serverURL = envURL
-            self.serverURLSource = "env:OPENCLAW_ACTIVITY_SERVER_URL"
-        } else if let suiteURL = appDefaults?.string(forKey: "serverURL"), !suiteURL.isEmpty {
-            self.serverURL = suiteURL
-            self.serverURLSource = "defaults:com.openclaw.activity"
-        } else if let standardURL = defaults.string(forKey: "serverURL"), !standardURL.isEmpty {
-            self.serverURL = standardURL
-            self.serverURLSource = "defaults:standard"
-        } else {
-            self.serverURL = "http://localhost:19789"
-            self.serverURLSource = "default"
-        }
+        let defaults = UserDefaults.standard
 
         self.pollInterval = defaults.double(forKey: "pollInterval").nonZero ?? 2.0
+        reloadConfiguration()
         print("[OpenClawActivity] serverURL=\(self.serverURL) source=\(self.serverURLSource)")
+    }
+
+    func reloadConfiguration() {
+        if let envURL = ProcessInfo.processInfo.environment["OPENCLAW_ACTIVITY_SERVER_URL"]?.trimmedNonEmpty {
+            setResolvedServerURL(envURL, source: "env:OPENCLAW_ACTIVITY_SERVER_URL")
+            return
+        }
+
+        for domain in Self.preferredDomains {
+            if let value = UserDefaults(suiteName: domain)?.string(forKey: Self.configKey)?.trimmedNonEmpty {
+                setResolvedServerURL(value, source: "defaults:\(domain)")
+                return
+            }
+        }
+
+        if let standardURL = UserDefaults.standard.string(forKey: Self.configKey)?.trimmedNonEmpty {
+            setResolvedServerURL(standardURL, source: "defaults:standard")
+            return
+        }
+
+        setResolvedServerURL(Self.defaultServerURL, source: "default")
+    }
+
+    func setServerURL(_ rawValue: String) {
+        guard let normalized = Self.normalizeServerURL(rawValue) else { return }
+
+        let defaults = UserDefaults.standard
+        defaults.set(normalized, forKey: Self.configKey)
+
+        for domain in Self.preferredDomains {
+            let domainDefaults = UserDefaults(suiteName: domain)
+            domainDefaults?.set(normalized, forKey: Self.configKey)
+        }
+
+        defaults.synchronize()
+        reloadConfiguration()
+        poll()
+    }
+
+    func clearServerURLOverride() {
+        let defaults = UserDefaults.standard
+        defaults.removeObject(forKey: Self.configKey)
+
+        for domain in Self.preferredDomains {
+            let domainDefaults = UserDefaults(suiteName: domain)
+            domainDefaults?.removeObject(forKey: Self.configKey)
+        }
+
+        defaults.synchronize()
+        reloadConfiguration()
+        poll()
     }
 
     func start() {
@@ -147,6 +195,30 @@ final class ActivityMonitor {
             }
         }.resume()
     }
+
+    private func setResolvedServerURL(_ value: String, source: String) {
+        self.serverURL = value
+        self.serverURLSource = source
+        print("[OpenClawActivity] serverURL=\(self.serverURL) source=\(self.serverURLSource)")
+    }
+
+    private static func normalizeServerURL(_ value: String) -> String? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        guard var components = URLComponents(string: trimmed),
+              let scheme = components.scheme?.lowercased(),
+              scheme == "http" || scheme == "https",
+              components.host?.isEmpty == false else {
+            return nil
+        }
+
+        components.path = components.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let basePath = components.path.isEmpty ? "" : "/\(components.path)"
+        components.path = basePath
+
+        guard let normalized = components.url?.absoluteString else { return nil }
+        return normalized.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+    }
 }
 
 // MARK: - Helpers
@@ -154,5 +226,12 @@ final class ActivityMonitor {
 private extension Double {
     var nonZero: Double? {
         self > 0 ? self : nil
+    }
+}
+
+private extension String {
+    var trimmedNonEmpty: String? {
+        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 }
