@@ -23,7 +23,7 @@ Real-time activity monitor for [OpenClaw](https://openclaw.ai):
 - **Gray dot** = idle
 - **Yellow dot** = disconnected from API server
 - Popover shows active session summary + current API URL and where that URL came from
-- Right-click the menu bar icon to open menu actions, including **Configure API URL...**
+- Right-click the menu bar icon and open **Settings...** to configure API URL and gateway token
 
 ---
 
@@ -40,9 +40,6 @@ Start server as a background service:
 
 ```bash
 brew services start openclaw-activity-server
-
-# one-time websocket setup (activity-server env only)
-openclaw-activity-server setup
 ```
 
 Launch client:
@@ -97,41 +94,6 @@ swift build -c release --disable-sandbox
 | `ACTIVITY_THRESHOLD_MS` | `15000` | Session age threshold considered “active” |
 
 If `OPENCLAW_GATEWAY_TOKEN` is empty, server also tries `~/.openclaw/openclaw.json` (`gateway.auth.token`).
-
-### One-command websocket setup
-
-If health shows `mode: "cli-fallback"` and tool log is empty, run:
-
-```bash
-openclaw-activity-server setup
-```
-
-This command:
-
-- reads token from `--token`, `OPENCLAW_GATEWAY_TOKEN`, or `openclaw config get gateway.auth.token`
-- writes service env (`OPENCLAW_GATEWAY_TOKEN`, `PATH`) in launch agent
-- does **not** modify OpenClaw config
-- does **not** restart services
-
-If `openclaw config get gateway.auth.token` returns a redacted placeholder,
-pass token explicitly:
-
-```bash
-openclaw-activity-server setup --token "<your-token>"
-```
-
-Apply changes:
-
-```bash
-brew services restart openclaw-activity-server
-```
-
-Verify:
-
-```bash
-curl http://127.0.0.1:19789/api/health
-# expect: { ..., "mode": "websocket" }
-```
 
 ### Client API URL selection order
 

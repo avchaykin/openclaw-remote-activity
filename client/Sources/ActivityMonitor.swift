@@ -75,6 +75,9 @@ final class ActivityMonitor {
         "OpenClawActivity",
         "openclaw-activity-bar"
     ]
+    private static let openClawConfigPath = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent(".openclaw", isDirectory: true)
+        .appendingPathComponent("openclaw.json", isDirectory: false)
 
     var state: ActivityState = .disconnected {
         didSet {
@@ -144,6 +147,34 @@ final class ActivityMonitor {
         defaults.synchronize()
         reloadConfiguration()
         poll()
+    }
+
+    func currentGatewayToken() -> String {
+        do {
+            let config = try readOpenClawConfig()
+            let gateway = config["gateway"] as? [String: Any]
+            let auth = gateway?["auth"] as? [String: Any]
+            return (auth?["token"] as? String) ?? ""
+        } catch {
+            return ""
+        }
+    }
+
+    func setGatewayToken(_ rawValue: String) throws {
+        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        var config = try readOpenClawConfig()
+        var gateway = (config["gateway"] as? [String: Any]) ?? [:]
+        var auth = (gateway["auth"] as? [String: Any]) ?? [:]
+
+        if trimmed.isEmpty {
+            auth.removeValue(forKey: "token")
+        } else {
+            auth["token"] = trimmed
+        }
+
+        gateway["auth"] = auth
+        config["gateway"] = gateway
+        try writeOpenClawConfig(config)
     }
 
     func start() {
@@ -218,6 +249,25 @@ final class ActivityMonitor {
 
         guard let normalized = components.url?.absoluteString else { return nil }
         return normalized.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+    }
+
+    private func readOpenClawConfig() throws -> [String: Any] {
+        let path = Self.openClawConfigPath
+        guard FileManager.default.fileExists(atPath: path.path) else {
+            return [:]
+        }
+
+        let data = try Data(contentsOf: path)
+        let object = try JSONSerialization.jsonObject(with: data)
+        return object as? [String: Any] ?? [:]
+    }
+
+    private func writeOpenClawConfig(_ config: [String: Any]) throws {
+        let path = Self.openClawConfigPath
+        let parent = path.deletingLastPathComponent()
+        try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
+        let data = try JSONSerialization.data(withJSONObject: config, options: [.prettyPrinted, .sortedKeys])
+        try data.write(to: path, options: .atomic)
     }
 }
 

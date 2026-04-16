@@ -2,7 +2,7 @@ class OpenclawActivityServer < Formula
   desc "Local API server for OpenClaw agent activity monitoring"
   homepage "https://github.com/avchaykin/openclaw-remote-activity"
   url "https://github.com/avchaykin/openclaw-remote-activity.git",
-      tag: "v0.1.6"
+      tag: "v0.1.7"
   license "MIT"
 
   depends_on "node"
@@ -38,17 +38,6 @@ class OpenclawActivityServer < Formula
 
   def caveats
     <<~EOS
-      Quick setup (recommended):
-
-        openclaw-activity-server setup
-
-      This command configures only openclaw-activity-server environment
-      (OPENCLAW_GATEWAY_TOKEN/PATH). It does not modify OpenClaw config
-      and does not restart services.
-
-      Apply changes:
-        brew services restart openclaw-activity-server
-
       Advanced/manual: edit launchctl plist:
         #{launchd_service_path}
 

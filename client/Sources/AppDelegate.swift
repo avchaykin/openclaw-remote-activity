@@ -6,6 +6,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var activityMonitor: ActivityMonitor!
     private var popover: NSPopover!
     private var statusMenu: NSMenu!
+    private var settingsWindow: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Hide dock icon — menu bar only
@@ -55,13 +56,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         detailsItem.target = self
         menu.addItem(detailsItem)
 
-        let configureItem = NSMenuItem(title: "Configure API URL...", action: #selector(configureServerURL), keyEquivalent: ",")
-        configureItem.target = self
-        menu.addItem(configureItem)
-
-        let resetItem = NSMenuItem(title: "Reset API URL (localhost)", action: #selector(resetServerURL), keyEquivalent: "")
-        resetItem.target = self
-        menu.addItem(resetItem)
+        let settingsItem = NSMenuItem(title: "Settings...", action: #selector(showSettings), keyEquivalent: ",")
+        settingsItem.target = self
+        menu.addItem(settingsItem)
 
         menu.addItem(NSMenuItem.separator())
 
@@ -98,29 +95,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         togglePopover()
     }
 
-    @objc private func configureServerURL() {
-        let alert = NSAlert()
-        alert.messageText = "Configure Activity Server URL"
-        alert.informativeText = "Example: http://aurora.tail2a0d07.ts.net:19789"
-        alert.alertStyle = .informational
-        alert.addButton(withTitle: "Save")
-        alert.addButton(withTitle: "Cancel")
-
-        let textField = NSTextField(frame: NSRect(x: 0, y: 0, width: 340, height: 24))
-        textField.stringValue = activityMonitor.serverURL
-        alert.accessoryView = textField
-
-        NSApp.activate(ignoringOtherApps: true)
-        let response = alert.runModal()
-        if response == .alertFirstButtonReturn {
-            activityMonitor.setServerURL(textField.stringValue)
-            updateIcon()
+    @objc private func showSettings() {
+        if let existingWindow = settingsWindow {
+            NSApp.activate(ignoringOtherApps: true)
+            existingWindow.makeKeyAndOrderFront(nil)
+            return
         }
-    }
 
-    @objc private func resetServerURL() {
-        activityMonitor.clearServerURLOverride()
-        updateIcon()
+        let contentView = SettingsView(monitor: activityMonitor) { [weak self] in
+            self?.settingsWindow?.close()
+        }
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 520, height: 320),
+            styleMask: [.titled, .closable, .miniaturizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "OpenClaw Activity Settings"
+        window.isReleasedWhenClosed = false
+        window.center()
+        window.contentViewController = NSHostingController(rootView: contentView)
+        window.delegate = self
+
+        settingsWindow = window
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
     }
 
     @objc private func quit() {
@@ -173,5 +173,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         image.isTemplate = false
         return image
+    }
+}
+
+extension AppDelegate: NSWindowDelegate {
+    func windowWillClose(_ notification: Notification) {
+        if let window = notification.object as? NSWindow, window == settingsWindow {
+            settingsWindow = nil
+        }
     }
 }
