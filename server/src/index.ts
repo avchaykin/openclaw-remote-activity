@@ -374,6 +374,7 @@ function sendConnect(challenge: { nonce: string; ts: number }): void {
         id: "gateway-client",
         version: "0.1.0",
         platform: "macos",
+        deviceFamily: "server",
         mode: "backend",
       },
       role: "operator",
