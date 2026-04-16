@@ -32,16 +32,20 @@ class OpenclawActivityServer < Formula
     environment_variables \
       OPENCLAW_GATEWAY_URL: "ws://127.0.0.1:18789",
       OPENCLAW_GATEWAY_TOKEN: "",
-      ACTIVITY_PORT: "19789"
+      ACTIVITY_PORT: "19789",
+      PATH: "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
   end
 
   def caveats
     <<~EOS
-      To configure the gateway token, edit the service plist or set env vars:
+      Quick setup (recommended):
 
-        export OPENCLAW_GATEWAY_TOKEN="your_token"
+        openclaw-activity-server setup
 
-      Or edit the launchctl plist:
+      This command configures gateway auth token + service environment,
+      then restarts gateway and activity server.
+
+      Advanced/manual: edit launchctl plist:
         #{launchd_service_path}
 
       Start the service:

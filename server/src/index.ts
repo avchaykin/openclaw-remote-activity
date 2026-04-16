@@ -2,6 +2,10 @@
 
 import http from "node:http";
 import crypto from "node:crypto";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { execFile, execFileSync } from "node:child_process";
 import { WebSocket } from "ws";
 
 // ---------------------------------------------------------------------------
@@ -13,6 +17,130 @@ const GATEWAY_TOKEN = process.env.OPENCLAW_GATEWAY_TOKEN ?? "";
 const PORT = parseInt(process.env.ACTIVITY_PORT ?? "19789", 10);
 const POLL_INTERVAL = parseInt(process.env.ACTIVITY_POLL_INTERVAL ?? "3000", 10);
 const ACTIVE_THRESHOLD_MS = parseInt(process.env.ACTIVITY_THRESHOLD_MS ?? "15000", 10);
+const OPENCLAW_BIN = resolveOpenClawBin();
+
+function resolveOpenClawBin(): string {
+  const candidates = [
+    process.env.OPENCLAW_BIN,
+    "openclaw",
+    "/opt/homebrew/bin/openclaw",
+    "/usr/local/bin/openclaw",
+  ].filter((x): x is string => Boolean(x));
+
+  for (const bin of candidates) {
+    try {
+      execFileSync(bin, ["--version"], { stdio: "ignore" });
+      return bin;
+    } catch {
+      // keep trying
+    }
+  }
+
+  return "openclaw";
+}
+
+function parseSetupOptions(args: string[]): {
+  token?: string;
+  noRestart: boolean;
+  plistPath?: string;
+} {
+  const options: { token?: string; noRestart: boolean; plistPath?: string } = {
+    noRestart: false,
+  };
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === "--token") {
+      options.token = args[i + 1];
+      i++;
+    } else if (arg === "--plist") {
+      options.plistPath = args[i + 1];
+      i++;
+    } else if (arg === "--no-restart") {
+      options.noRestart = true;
+    } else if (arg === "-h" || arg === "--help") {
+      console.log(`
+openclaw-activity-server setup [--token <value>] [--plist <path>] [--no-restart]
+
+Configures OpenClaw gateway auth token + activity-server environment for websocket mode.
+`);
+      process.exit(0);
+    }
+  }
+
+  return options;
+}
+
+function runCommand(bin: string, args: string[], required: boolean, errorHint?: string): boolean {
+  try {
+    execFileSync(bin, args, { stdio: "inherit" });
+    return true;
+  } catch (error) {
+    if (required) {
+      throw error;
+    }
+    const cmd = [bin, ...args].join(" ");
+    console.warn(`[setup] skipped: ${cmd}`);
+    if (errorHint) {
+      console.warn(`[setup] hint: ${errorHint}`);
+    }
+    return false;
+  }
+}
+
+function plistSetOrAdd(plistPath: string, key: string, value: string): void {
+  const plistBuddy = "/usr/libexec/PlistBuddy";
+  const setArgs = ["-c", `Set :EnvironmentVariables:${key} ${value}`, plistPath];
+  const addArgs = ["-c", `Add :EnvironmentVariables:${key} string ${value}`, plistPath];
+  const addDictArgs = ["-c", "Add :EnvironmentVariables dict", plistPath];
+
+  const setOk = runCommand(plistBuddy, setArgs, false);
+  if (setOk) return;
+
+  runCommand(plistBuddy, addDictArgs, false);
+  runCommand(plistBuddy, addArgs, false);
+}
+
+function runSetupCommand(args: string[]): void {
+  const options = parseSetupOptions(args);
+  const token = (options.token ?? crypto.randomBytes(24).toString("hex")).trim();
+  const tokenMask = `${token.slice(0, 6)}...${token.slice(-4)}`;
+  const plistPath = options.plistPath ?? path.join(os.homedir(), "Library/LaunchAgents/homebrew.mxcl.openclaw-activity-server.plist");
+  const servicePath = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin";
+
+  console.log("[setup] configuring gateway auth + activity server...");
+  runCommand(OPENCLAW_BIN, ["config", "set", "gateway.auth.mode", "token"], true);
+  runCommand(OPENCLAW_BIN, ["config", "set", "gateway.auth.token", token], true);
+
+  runCommand("/bin/launchctl", ["setenv", "OPENCLAW_GATEWAY_TOKEN", token], false,
+    "If this fails, set OPENCLAW_GATEWAY_TOKEN manually in your shell or launch agent.");
+  runCommand("/bin/launchctl", ["setenv", "PATH", servicePath], false,
+    "If this fails, ensure /opt/homebrew/bin is available for launchd services.");
+
+  if (fs.existsSync(plistPath)) {
+    plistSetOrAdd(plistPath, "OPENCLAW_GATEWAY_TOKEN", token);
+    plistSetOrAdd(plistPath, "PATH", servicePath);
+  } else {
+    console.warn(`[setup] plist not found: ${plistPath}`);
+    console.warn("[setup] start service once with brew services start openclaw-activity-server, then run setup again.");
+  }
+
+  if (!options.noRestart) {
+    runCommand(OPENCLAW_BIN, ["gateway", "restart"], false,
+      "Gateway restart skipped. Restart manually with: openclaw gateway restart");
+    runCommand("brew", ["services", "restart", "openclaw-activity-server"], false,
+      "Service restart skipped. Restart manually with: brew services restart openclaw-activity-server");
+  }
+
+  console.log(`[setup] done. token=${tokenMask}`);
+  console.log("[setup] verify with: curl http://127.0.0.1:19789/api/health");
+  process.exit(0);
+}
+
+const cliArgs = process.argv.slice(2);
+if (cliArgs[0] === "setup") {
+  runSetupCommand(cliArgs.slice(1));
+}
 
 // ---------------------------------------------------------------------------
 // State
@@ -338,8 +466,6 @@ function handleSessionsResponse(payload: any): void {
 // Fallback: poll via openclaw status CLI
 // ---------------------------------------------------------------------------
 
-import { execFile } from "node:child_process";
-
 let useCliFallback = false;
 let cliPollTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -361,7 +487,7 @@ function stopCliFallback(): void {
 }
 
 function pollCli(): void {
-  execFile("openclaw", ["status", "--json"], { timeout: 10000 }, (err, stdout) => {
+  execFile(OPENCLAW_BIN, ["status", "--json"], { timeout: 10000 }, (err, stdout) => {
     if (err) {
       console.error("[fallback] cli error:", err.message);
       return;

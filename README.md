@@ -40,6 +40,9 @@ Start server as a background service:
 
 ```bash
 brew services start openclaw-activity-server
+
+# one-time websocket setup (token + env + restarts)
+openclaw-activity-server setup
 ```
 
 Launch client:
@@ -92,6 +95,28 @@ swift build -c release --disable-sandbox
 | `ACTIVITY_BIND_HOST` | `0.0.0.0` | Bind host (`127.0.0.1` for local-only) |
 | `ACTIVITY_POLL_INTERVAL` | `3000` | Poll interval (ms) |
 | `ACTIVITY_THRESHOLD_MS` | `15000` | Session age threshold considered “active” |
+
+### One-command websocket setup
+
+If health shows `mode: "cli-fallback"` and tool log is empty, run:
+
+```bash
+openclaw-activity-server setup
+```
+
+This command:
+
+- sets `gateway.auth.mode=token`
+- generates/sets a gateway token
+- writes service env (`OPENCLAW_GATEWAY_TOKEN`, `PATH`) in launch agent
+- restarts OpenClaw gateway and `openclaw-activity-server`
+
+Verify:
+
+```bash
+curl http://127.0.0.1:19789/api/health
+# expect: { ..., "mode": "websocket" }
+```
 
 ### Client API URL selection order
 
