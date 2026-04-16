@@ -207,20 +207,42 @@ function pushToolActivity(entry: ToolActivity): void {
 }
 
 function extractToolName(payload: any): string | null {
+  const p = payload?.payload ?? payload;
   return (
-    payload?.toolName ??
-    payload?.tool ??
-    payload?.name ??
-    payload?.recipient_name ??
-    payload?.request?.recipient_name ??
-    payload?.call?.toolName ??
-    payload?.call?.tool ??
+    p?.toolName ??
+    p?.tool ??
+    p?.name ??
+    p?.recipient_name ??
+    p?.recipientName ??
+    p?.request?.recipient_name ??
+    p?.request?.recipientName ??
+    p?.call?.toolName ??
+    p?.call?.tool ??
+    p?.toolCall?.name ??
     null
   );
 }
 
+function extractEventName(msg: any): string {
+  return (
+    msg?.event ??
+    msg?.name ??
+    msg?.method ??
+    msg?.payload?.event ??
+    ""
+  );
+}
+
+function extractSessionKey(payload: any): string | undefined {
+  const p = payload?.payload ?? payload;
+  return p?.sessionKey ?? p?.key ?? p?.session?.key;
+}
+
 function handleGatewayMessage(msg: any): void {
   state.gatewayEvents++;
+  const eventName = String(extractEventName(msg));
+  const payload = msg?.payload;
+  const tool = extractToolName(payload);
 
   // Challenge from gateway
   if (msg.type === "event" && msg.event === "connect.challenge") {
@@ -255,18 +277,18 @@ function handleGatewayMessage(msg: any): void {
   // Any event = potential activity signal
   if (msg.type === "event") {
     // Events like agent.run.start, tool.call, etc. indicate activity
-    if (msg.event?.includes("agent") || msg.event?.includes("tool") || msg.event?.includes("run")) {
+    if (eventName.includes("agent") || eventName.includes("tool") || eventName.includes("run")) {
       state.active = true;
       state.ts = Date.now();
     }
 
-    if (msg.event?.includes("tool")) {
-      const tool = extractToolName(msg.payload) ?? msg.event;
-      const phase = String(msg.event).split(".").slice(-1)[0] ?? "event";
+    if (eventName.includes("tool") || tool) {
+      const toolName = tool ?? eventName;
+      const phase = String(eventName).split(".").slice(-1)[0] ?? "event";
       pushToolActivity({
         ts: Date.now(),
-        sessionKey: msg.payload?.sessionKey ?? msg.payload?.key,
-        tool,
+        sessionKey: extractSessionKey(payload),
+        tool: toolName,
         phase,
       });
     }
