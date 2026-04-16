@@ -13,11 +13,40 @@ import { WebSocket } from "ws";
 // ---------------------------------------------------------------------------
 
 const GATEWAY_URL = process.env.OPENCLAW_GATEWAY_URL ?? "ws://127.0.0.1:18789";
-const GATEWAY_TOKEN = process.env.OPENCLAW_GATEWAY_TOKEN ?? "";
+const GATEWAY_TOKEN = resolveGatewayToken();
 const PORT = parseInt(process.env.ACTIVITY_PORT ?? "19789", 10);
 const POLL_INTERVAL = parseInt(process.env.ACTIVITY_POLL_INTERVAL ?? "3000", 10);
 const ACTIVE_THRESHOLD_MS = parseInt(process.env.ACTIVITY_THRESHOLD_MS ?? "15000", 10);
 const OPENCLAW_BIN = resolveOpenClawBin();
+
+function resolveGatewayToken(): string {
+  const envToken = process.env.OPENCLAW_GATEWAY_TOKEN?.trim();
+  if (envToken) return envToken;
+
+  const configToken = readGatewayTokenFromConfigFile();
+  if (configToken) return configToken;
+
+  return "";
+}
+
+function readGatewayTokenFromConfigFile(): string | null {
+  try {
+    const configPath = path.join(os.homedir(), ".openclaw", "openclaw.json");
+    if (!fs.existsSync(configPath)) return null;
+
+    const raw = fs.readFileSync(configPath, "utf8");
+    const parsed = JSON.parse(raw);
+    const token = parsed?.gateway?.auth?.token;
+
+    if (typeof token === "string" && token.trim().length > 0 && !looksRedactedToken(token)) {
+      return token.trim();
+    }
+  } catch {
+    // ignore and fall back
+  }
+
+  return null;
+}
 
 function resolveOpenClawBin(): string {
   const candidates = [

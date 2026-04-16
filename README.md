@@ -96,6 +96,8 @@ swift build -c release --disable-sandbox
 | `ACTIVITY_POLL_INTERVAL` | `3000` | Poll interval (ms) |
 | `ACTIVITY_THRESHOLD_MS` | `15000` | Session age threshold considered “active” |
 
+If `OPENCLAW_GATEWAY_TOKEN` is empty, server also tries `~/.openclaw/openclaw.json` (`gateway.auth.token`).
+
 ### One-command websocket setup
 
 If health shows `mode: "cli-fallback"` and tool log is empty, run:
