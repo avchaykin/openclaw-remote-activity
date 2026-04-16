@@ -111,6 +111,13 @@ This command:
 - does **not** modify OpenClaw config
 - does **not** restart services
 
+If `openclaw config get gateway.auth.token` returns a redacted placeholder,
+pass token explicitly:
+
+```bash
+openclaw-activity-server setup --token "<your-token>"
+```
+
 Apply changes:
 
 ```bash

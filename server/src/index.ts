@@ -152,9 +152,21 @@ function resolveGatewayTokenForSetup(explicitToken?: string): string | null {
   if (envToken) return envToken;
 
   const configToken = readOpenClawConfigValue("gateway.auth.token")?.trim();
-  if (configToken) return configToken;
+  if (configToken) {
+    if (looksRedactedToken(configToken)) {
+      console.warn("[setup] gateway.auth.token is redacted by openclaw config get output.");
+      console.warn("[setup] provide token explicitly: openclaw-activity-server setup --token <token>");
+      return null;
+    }
+    return configToken;
+  }
 
   return null;
+}
+
+function looksRedactedToken(value: string): boolean {
+  const normalized = value.trim().toUpperCase();
+  return normalized.includes("REDACTED");
 }
 
 const cliArgs = process.argv.slice(2);
