@@ -7,6 +7,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var popover: NSPopover!
     private var statusMenu: NSMenu!
     private var settingsWindow: NSWindow?
+    private var animationTimer: Timer?
+    private var rippleStartTimes: [TimeInterval] = []
+    private var lastRippleSpawnAt: TimeInterval = 0
+
+    private let rippleDuration: TimeInterval = 0.9
+    private let rippleSpawnInterval: TimeInterval = 0.75
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Hide dock icon — menu bar only
@@ -138,18 +144,67 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let isConnected = activityMonitor.state.connected
 
         if !isConnected {
+            stopAnimation()
             // Disconnected — red dot
             button.image = createDotImage(color: .systemRed, filled: true)
             button.toolTip = "OpenClaw: disconnected from server"
         } else if isActive {
-            // Active — dark green dot
-            button.image = createDotImage(color: .activityDarkGreen, filled: true)
+            ensureAnimationRunning()
+            renderAnimatedIcon()
             let count = activityMonitor.state.summary.activeSessions
             button.toolTip = "OpenClaw: \(count) active session\(count == 1 ? "" : "s")"
         } else {
+            if rippleStartTimes.isEmpty {
+                stopAnimation()
+            } else {
+                ensureAnimationRunning()
+                renderAnimatedIcon()
+                return
+            }
             // Connected + idle — white dot
             button.image = createDotImage(color: .white, filled: true)
             button.toolTip = "OpenClaw: connected (idle)"
+        }
+    }
+
+    private func ensureAnimationRunning() {
+        if animationTimer != nil { return }
+        animationTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
+            self?.renderAnimatedIcon()
+        }
+    }
+
+    private func stopAnimation() {
+        animationTimer?.invalidate()
+        animationTimer = nil
+        rippleStartTimes.removeAll()
+        lastRippleSpawnAt = 0
+    }
+
+    private func renderAnimatedIcon() {
+        guard let button = statusItem.button else { return }
+
+        let now = Date.timeIntervalSinceReferenceDate
+        let isConnected = activityMonitor.state.connected
+        let isActive = activityMonitor.state.active
+
+        if !isConnected {
+            stopAnimation()
+            button.image = createDotImage(color: .systemRed, filled: true)
+            return
+        }
+
+        if isActive && (lastRippleSpawnAt == 0 || now - lastRippleSpawnAt >= rippleSpawnInterval) {
+            rippleStartTimes.append(now)
+            lastRippleSpawnAt = now
+        }
+
+        rippleStartTimes.removeAll { now - $0 > rippleDuration }
+        button.image = createRippleImage(now: now, rippleStarts: rippleStartTimes)
+
+        if !isActive && rippleStartTimes.isEmpty {
+            stopAnimation()
+            button.image = createDotImage(color: .white, filled: true)
         }
     }
 
@@ -168,6 +223,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             color.withAlphaComponent(0.5).setStroke()
             path.lineWidth = 0.5
             path.stroke()
+
+            return true
+        }
+        image.isTemplate = false
+        return image
+    }
+
+    private func createRippleImage(now: TimeInterval, rippleStarts: [TimeInterval]) -> NSImage {
+        let size = NSSize(width: 18, height: 18)
+        let center = NSPoint(x: 9, y: 9)
+        let image = NSImage(size: size, flipped: false) { _ in
+            for start in rippleStarts {
+                let progress = max(0, min(1, (now - start) / self.rippleDuration))
+                let radius = 4.0 + (progress * 6.0)
+                let alpha = 0.55 * (1.0 - progress)
+                let ringRect = NSRect(
+                    x: center.x - radius,
+                    y: center.y - radius,
+                    width: radius * 2.0,
+                    height: radius * 2.0
+                )
+                let ringPath = NSBezierPath(ovalIn: ringRect)
+                NSColor.white.withAlphaComponent(alpha).setStroke()
+                ringPath.lineWidth = max(0.6, 1.2 * (1.0 - (progress * 0.4)))
+                ringPath.stroke()
+            }
+
+            let dotRect = NSRect(x: 5, y: 5, width: 8, height: 8)
+            let dotPath = NSBezierPath(ovalIn: dotRect)
+            NSColor.white.setFill()
+            dotPath.fill()
+            NSColor.white.withAlphaComponent(0.45).setStroke()
+            dotPath.lineWidth = 0.5
+            dotPath.stroke()
 
             return true
         }
