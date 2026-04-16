@@ -200,7 +200,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         rippleStartTimes.removeAll { now - $0 > rippleDuration }
-        button.image = createRippleImage(now: now, rippleStarts: rippleStartTimes)
+        button.image = createRippleImage(now: now, rippleStarts: rippleStartTimes, rippleColor: phaseColor())
 
         if !isActive && rippleStartTimes.isEmpty {
             stopAnimation()
@@ -231,6 +231,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func createRippleImage(now: TimeInterval, rippleStarts: [TimeInterval]) -> NSImage {
+        createRippleImage(now: now, rippleStarts: rippleStarts, rippleColor: .white)
+    }
+
+    private func createRippleImage(now: TimeInterval, rippleStarts: [TimeInterval], rippleColor: NSColor) -> NSImage {
         let size = NSSize(width: 18, height: 18)
         let center = NSPoint(x: 9, y: 9)
         let image = NSImage(size: size, flipped: false) { _ in
@@ -245,7 +249,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     height: radius * 2.0
                 )
                 let ringPath = NSBezierPath(ovalIn: ringRect)
-                NSColor.white.withAlphaComponent(alpha).setStroke()
+                rippleColor.withAlphaComponent(alpha).setStroke()
                 ringPath.lineWidth = max(0.6, 1.2 * (1.0 - (progress * 0.4)))
                 ringPath.stroke()
             }
@@ -262,6 +266,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         image.isTemplate = false
         return image
+    }
+
+    private func phaseColor() -> NSColor {
+        switch activityMonitor.state.currentPhase {
+        case "tooling":
+            return NSColor.systemCyan
+        case "thinking":
+            return NSColor.systemPurple
+        case "responding":
+            return NSColor.systemOrange
+        default:
+            return NSColor.white
+        }
     }
 }
 

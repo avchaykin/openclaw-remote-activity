@@ -42,6 +42,13 @@ struct StatusPopoverView: View {
                 }
                 .frame(maxWidth: .infinity)
 
+                HStack {
+                    Text("Phase: \(phaseLabel(state.currentPhase))")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                    Spacer()
+                }
+
                 Divider()
                 Text("Tool Activity")
                     .font(.caption)
@@ -137,8 +144,24 @@ struct StatusBadge: View {
 
     private var badgeText: String {
         if !state.connected { return "Offline" }
-        if state.active { return "Active" }
+        if state.active {
+            switch state.currentPhase {
+            case "tooling": return "Tooling"
+            case "thinking": return "Thinking"
+            case "responding": return "Responding"
+            default: return "Active"
+            }
+        }
         return "Idle"
+    }
+}
+
+private func phaseLabel(_ phase: String?) -> String {
+    switch phase {
+    case "tooling": return "Tooling"
+    case "thinking": return "Thinking"
+    case "responding": return "Responding"
+    default: return "Idle"
     }
 }
 

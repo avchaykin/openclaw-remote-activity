@@ -31,6 +31,8 @@ struct ToolActivity: Codable, Identifiable {
 struct ActivityState: Codable {
     let connected: Bool
     let active: Bool
+    let currentPhase: String?
+    let phaseTs: Int?
     let sessions: [SessionInfo]
     let summary: ActivitySummary
     let ts: Int
@@ -50,6 +52,8 @@ extension ActivityState {
     static let disconnected = ActivityState(
         connected: false,
         active: false,
+        currentPhase: "idle",
+        phaseTs: nil,
         sessions: [],
         summary: ActivitySummary(totalSessions: 0, activeSessions: 0, idleSessions: 0),
         ts: 0,

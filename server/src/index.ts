@@ -96,6 +96,8 @@ interface ToolActivity {
 interface ActivityState {
   connected: boolean;
   active: boolean;
+  currentPhase: "idle" | "tooling" | "thinking" | "responding";
+  phaseTs: number;
   sessions: SessionInfo[];
   summary: { totalSessions: number; activeSessions: number; idleSessions: number };
   ts: number;
@@ -107,6 +109,8 @@ interface ActivityState {
 const state: ActivityState = {
   connected: false,
   active: false,
+  currentPhase: "idle",
+  phaseTs: Date.now(),
   sessions: [],
   summary: { totalSessions: 0, activeSessions: 0, idleSessions: 0 },
   ts: Date.now(),
@@ -116,6 +120,12 @@ const state: ActivityState = {
 };
 
 const startTime = Date.now();
+
+function setPhase(phase: ActivityState["currentPhase"]): void {
+  if (state.currentPhase === phase) return;
+  state.currentPhase = phase;
+  state.phaseTs = Date.now();
+}
 
 // ---------------------------------------------------------------------------
 // Device identity (ephemeral keypair for this server instance)
@@ -181,6 +191,7 @@ function connectGateway(): void {
     console.log(`[gateway] closed: ${code} ${reason}`);
     state.connected = false;
     state.active = false;
+    setPhase("idle");
     sessionsSubscribed = false;
     subscribedSessionKeys.clear();
     stopPolling();
@@ -273,6 +284,7 @@ function handleGatewayMessage(msg: any): void {
     console.log("[gateway] connected as operator ✓");
     state.connected = true;
     state.mode = "websocket";
+    setPhase("thinking");
 
     subscribeSessionEvents();
 
@@ -302,7 +314,7 @@ function handleGatewayMessage(msg: any): void {
   // Any event = potential activity signal
   if (msg.type === "event") {
     // Events like agent.run.start, tool.call, etc. indicate activity
-    if (eventName.includes("agent") || eventName.includes("tool") || eventName.includes("run")) {
+    if (eventName.includes("agent") || eventName.includes("tool") || eventName.includes("run") || eventName.includes("session.message")) {
       state.active = true;
       state.ts = Date.now();
     }
@@ -316,6 +328,16 @@ function handleGatewayMessage(msg: any): void {
         tool: toolName,
         phase,
       });
+      setPhase("tooling");
+    } else if (eventName.includes("session.message")) {
+      const role = String(payload?.message?.role ?? payload?.role ?? "").toLowerCase();
+      if (role === "assistant") {
+        setPhase("responding");
+      } else {
+        setPhase("thinking");
+      }
+    } else if (eventName.includes("agent") || eventName.includes("run")) {
+      setPhase("thinking");
     }
   }
 }
@@ -488,6 +510,16 @@ function handleSessionsResponse(payload: any): void {
     activeSessions,
     idleSessions: sessions.length - activeSessions,
   };
+
+  if (activeSessions === 0) {
+    setPhase("idle");
+  } else {
+    const sincePhaseMs = Date.now() - state.phaseTs;
+    if (state.currentPhase === "tooling" && sincePhaseMs > 4500) {
+      setPhase("thinking");
+    }
+  }
+
   state.ts = now;
 }
 
@@ -517,6 +549,9 @@ function handleSessionPreviewResponse(payload: any): void {
           tool,
           phase: "preview",
         });
+        if (state.active) {
+          setPhase("tooling");
+        }
       }
     }
   }
@@ -533,6 +568,7 @@ function startCliFallback(): void {
   if (cliPollTimer) return;
   useCliFallback = true;
   state.mode = "cli-fallback";
+  setPhase("thinking");
   console.log("[fallback] using CLI polling");
   pollCli();
   cliPollTimer = setInterval(pollCli, POLL_INTERVAL);
@@ -582,6 +618,11 @@ function pollCli(): void {
         activeSessions,
         idleSessions: sessions.length - activeSessions,
       };
+      if (activeSessions === 0) {
+        setPhase("idle");
+      } else if (state.currentPhase === "idle") {
+        setPhase("thinking");
+      }
       state.ts = now;
     } catch (e: any) {
       console.error("[fallback] parse error:", e.message);
