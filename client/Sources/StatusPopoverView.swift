@@ -110,7 +110,7 @@ struct StatusPopoverView: View {
             }
         }
         .padding(16)
-        .frame(width: 360, height: 330)
+        .frame(width: 360, height: 390)
         .onReceive(timer) { _ in
             state = monitor.state
         }
