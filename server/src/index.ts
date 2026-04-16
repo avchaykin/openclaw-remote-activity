@@ -149,6 +149,8 @@ let reqId = 0;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let pendingChallenge: { nonce: string; ts: number } | null = null;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
+let sessionsSubscribed = false;
+const subscribedSessionKeys = new Set<string>();
 
 function nextId(): string {
   return `activity-${++reqId}`;
@@ -179,6 +181,8 @@ function connectGateway(): void {
     console.log(`[gateway] closed: ${code} ${reason}`);
     state.connected = false;
     state.active = false;
+    sessionsSubscribed = false;
+    subscribedSessionKeys.clear();
     stopPolling();
     scheduleReconnect();
   });
@@ -208,7 +212,13 @@ function pushToolActivity(entry: ToolActivity): void {
 
 function extractToolName(payload: any): string | null {
   const p = payload?.payload ?? payload;
+  const d = p?.data;
   return (
+    d?.toolName ??
+    d?.tool ??
+    d?.name ??
+    d?.recipient_name ??
+    d?.recipientName ??
     p?.toolName ??
     p?.tool ??
     p?.name ??
@@ -235,7 +245,14 @@ function extractEventName(msg: any): string {
 
 function extractSessionKey(payload: any): string | undefined {
   const p = payload?.payload ?? payload;
-  return p?.sessionKey ?? p?.key ?? p?.session?.key;
+  return p?.sessionKey ?? p?.key ?? p?.session?.key ?? p?.data?.sessionKey;
+}
+
+function extractPhase(eventName: string, payload: any): string {
+  const p = payload?.payload ?? payload;
+  const dataPhase = p?.data?.phase;
+  if (typeof dataPhase === "string" && dataPhase.trim()) return dataPhase;
+  return String(eventName).split(".").slice(-1)[0] ?? "event";
 }
 
 function handleGatewayMessage(msg: any): void {
@@ -257,6 +274,8 @@ function handleGatewayMessage(msg: any): void {
     state.connected = true;
     state.mode = "websocket";
 
+    subscribeSessionEvents();
+
     // Start polling sessions
     startPolling();
     return;
@@ -274,6 +293,12 @@ function handleGatewayMessage(msg: any): void {
     return;
   }
 
+  // Response to sessions preview
+  if (msg.type === "res" && msg.ok && msg.id?.startsWith("preview-")) {
+    handleSessionPreviewResponse(msg.payload);
+    return;
+  }
+
   // Any event = potential activity signal
   if (msg.type === "event") {
     // Events like agent.run.start, tool.call, etc. indicate activity
@@ -284,7 +309,7 @@ function handleGatewayMessage(msg: any): void {
 
     if (eventName.includes("tool") || tool) {
       const toolName = tool ?? eventName;
-      const phase = String(eventName).split(".").slice(-1)[0] ?? "event";
+      const phase = extractPhase(eventName, payload);
       pushToolActivity({
         ts: Date.now(),
         sessionKey: extractSessionKey(payload),
@@ -361,6 +386,31 @@ function startPolling(): void {
   pollTimer = setInterval(pollSessions, POLL_INTERVAL);
 }
 
+function subscribeSessionEvents(): void {
+  if (!ws || ws.readyState !== WebSocket.OPEN || sessionsSubscribed) return;
+  sessionsSubscribed = true;
+  const msg = {
+    type: "req",
+    id: `sub-${nextId()}`,
+    method: "sessions.subscribe",
+    params: {},
+  };
+  ws.send(JSON.stringify(msg));
+}
+
+function subscribeSessionMessages(sessionKey: string): void {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  if (!sessionKey || subscribedSessionKeys.has(sessionKey)) return;
+  subscribedSessionKeys.add(sessionKey);
+  const msg = {
+    type: "req",
+    id: `submsg-${nextId()}`,
+    method: "sessions.messages.subscribe",
+    params: { sessionKey },
+  };
+  ws.send(JSON.stringify(msg));
+}
+
 function stopPolling(): void {
   if (pollTimer) {
     clearInterval(pollTimer);
@@ -378,6 +428,24 @@ function pollSessions(): void {
     method: "sessions.list",
     params: {
       activeMinutes: 5,
+    },
+  };
+  ws.send(JSON.stringify(msg));
+}
+
+function pollSessionPreviews(sessionKeys: string[]): void {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  const keys = Array.from(new Set(sessionKeys.filter(Boolean))).slice(0, 24);
+  if (keys.length === 0) return;
+
+  const msg = {
+    type: "req",
+    id: `preview-${nextId()}`,
+    method: "sessions.preview",
+    params: {
+      keys,
+      limit: 20,
+      maxChars: 220,
     },
   };
   ws.send(JSON.stringify(msg));
@@ -402,7 +470,14 @@ function handleSessionsResponse(payload: any): void {
       active: isActive,
       model: s.model,
     });
+
+    if (s.key || s.sessionKey) {
+      subscribeSessionMessages(s.key ?? s.sessionKey);
+    }
   }
+
+  const sessionKeys = sessions.map((s) => s.key).filter((k) => k && k !== "unknown");
+  pollSessionPreviews(sessionKeys);
 
   const activeSessions = sessions.filter((s) => s.active).length;
 
@@ -414,6 +489,37 @@ function handleSessionsResponse(payload: any): void {
     idleSessions: sessions.length - activeSessions,
   };
   state.ts = now;
+}
+
+function handleSessionPreviewResponse(payload: any): void {
+  const previews = Array.isArray(payload?.previews) ? payload.previews : [];
+  const now = Date.now();
+
+  for (const preview of previews) {
+    const sessionKey = typeof preview?.key === "string" ? preview.key : undefined;
+    const items = Array.isArray(preview?.items) ? preview.items : [];
+
+    for (const item of items) {
+      const text = typeof item?.text === "string" ? item.text.trim() : "";
+      if (!text) continue;
+      if (!text.toLowerCase().startsWith("call ")) continue;
+
+      const parsed = text.replace(/^call\s+/i, "").trim();
+      if (!parsed) continue;
+
+      for (const rawTool of parsed.split(",")) {
+        const tool = rawTool.trim().replace(/\s*\+\d+$/, "").trim();
+        if (tool.startsWith("+")) continue;
+        if (!tool) continue;
+        pushToolActivity({
+          ts: now,
+          sessionKey,
+          tool,
+          phase: "preview",
+        });
+      }
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
