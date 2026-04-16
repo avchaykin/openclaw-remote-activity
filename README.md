@@ -19,10 +19,14 @@ Real-time activity monitor for [OpenClaw](https://openclaw.ai):
 
 ### Menu bar client
 
-- **Blinking red dot** = active session(s)
-- **Gray dot** = idle
-- **Yellow dot** = disconnected from API server
-- Popover shows active session summary + current API URL and where that URL came from
+- **White dot** = connected
+- **White dot + ripple animation** = activity in progress
+- **Red dot** = disconnected from API server
+- Ripple color shows phase (for visual feedback):
+  - **Cyan** = tooling
+  - **Purple** = thinking
+  - **Orange** = responding
+- Popover shows activity summary, tool activity, and current phase
 - Right-click the menu bar icon and open **Settings...** to configure API URL and gateway token
 
 ---
@@ -113,6 +117,19 @@ defaults write com.openclaw.activity serverURL "http://192.168.1.121:19789"
 
 Restart client after changes.
 
+### Menu bar settings
+
+In **Settings...** you can configure:
+
+- **Activity API URL** (client endpoint)
+- **OpenClaw gateway token** (saved to `~/.openclaw/openclaw.json` as `gateway.auth.token`)
+
+After changing token, restart the server:
+
+```bash
+brew services restart openclaw-activity-server
+```
+
 ---
 
 ## API examples
@@ -129,6 +146,8 @@ Restart client after changes.
 {
   "connected": true,
   "active": true,
+  "currentPhase": "tooling",
+  "phaseTs": 1776335000000,
   "sessions": [
     {
       "key": "agent:main:telegram:direct:129208069",
@@ -144,8 +163,17 @@ Restart client after changes.
     "activeSessions": 1,
     "idleSessions": 2
   },
+  "toolLog": [
+    {
+      "ts": 1776334999000,
+      "sessionKey": "agent:main:telegram:direct:129208069",
+      "tool": "read",
+      "phase": "start"
+    }
+  ],
   "ts": 1772977633446,
-  "gatewayEvents": 42
+  "gatewayEvents": 42,
+  "mode": "websocket"
 }
 ```
 
