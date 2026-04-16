@@ -42,8 +42,12 @@ class OpenclawActivityServer < Formula
 
         openclaw-activity-server setup
 
-      This command configures gateway auth token + service environment,
-      then restarts gateway and activity server.
+      This command configures only openclaw-activity-server environment
+      (OPENCLAW_GATEWAY_TOKEN/PATH). It does not modify OpenClaw config
+      and does not restart services.
+
+      Apply changes:
+        brew services restart openclaw-activity-server
 
       Advanced/manual: edit launchctl plist:
         #{launchd_service_path}

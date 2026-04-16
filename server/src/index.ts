@@ -41,12 +41,9 @@ function resolveOpenClawBin(): string {
 
 function parseSetupOptions(args: string[]): {
   token?: string;
-  noRestart: boolean;
   plistPath?: string;
 } {
-  const options: { token?: string; noRestart: boolean; plistPath?: string } = {
-    noRestart: false,
-  };
+  const options: { token?: string; plistPath?: string } = {};
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -56,13 +53,12 @@ function parseSetupOptions(args: string[]): {
     } else if (arg === "--plist") {
       options.plistPath = args[i + 1];
       i++;
-    } else if (arg === "--no-restart") {
-      options.noRestart = true;
     } else if (arg === "-h" || arg === "--help") {
       console.log(`
-openclaw-activity-server setup [--token <value>] [--plist <path>] [--no-restart]
+openclaw-activity-server setup [--token <value>] [--plist <path>]
 
-Configures OpenClaw gateway auth token + activity-server environment for websocket mode.
+Configures only openclaw-activity-server environment for websocket mode.
+Does not modify OpenClaw config and does not restart services.
 `);
       process.exit(0);
     }
@@ -103,14 +99,18 @@ function plistSetOrAdd(plistPath: string, key: string, value: string): void {
 
 function runSetupCommand(args: string[]): void {
   const options = parseSetupOptions(args);
-  const token = (options.token ?? crypto.randomBytes(24).toString("hex")).trim();
+  const token = resolveGatewayTokenForSetup(options.token);
+  if (!token) {
+    console.error("[setup] no gateway token found.");
+    console.error("[setup] pass --token <value> or configure openclaw gateway.auth.token first.");
+    process.exit(1);
+  }
+
   const tokenMask = `${token.slice(0, 6)}...${token.slice(-4)}`;
   const plistPath = options.plistPath ?? path.join(os.homedir(), "Library/LaunchAgents/homebrew.mxcl.openclaw-activity-server.plist");
   const servicePath = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin";
 
-  console.log("[setup] configuring gateway auth + activity server...");
-  runCommand(OPENCLAW_BIN, ["config", "set", "gateway.auth.mode", "token"], true);
-  runCommand(OPENCLAW_BIN, ["config", "set", "gateway.auth.token", token], true);
+  console.log("[setup] configuring openclaw-activity-server environment...");
 
   runCommand("/bin/launchctl", ["setenv", "OPENCLAW_GATEWAY_TOKEN", token], false,
     "If this fails, set OPENCLAW_GATEWAY_TOKEN manually in your shell or launch agent.");
@@ -125,16 +125,36 @@ function runSetupCommand(args: string[]): void {
     console.warn("[setup] start service once with brew services start openclaw-activity-server, then run setup again.");
   }
 
-  if (!options.noRestart) {
-    runCommand(OPENCLAW_BIN, ["gateway", "restart"], false,
-      "Gateway restart skipped. Restart manually with: openclaw gateway restart");
-    runCommand("brew", ["services", "restart", "openclaw-activity-server"], false,
-      "Service restart skipped. Restart manually with: brew services restart openclaw-activity-server");
-  }
-
   console.log(`[setup] done. token=${tokenMask}`);
+  console.log("[setup] openclaw config was not changed.");
+  console.log("[setup] restart only activity server to apply env: brew services restart openclaw-activity-server");
   console.log("[setup] verify with: curl http://127.0.0.1:19789/api/health");
   process.exit(0);
+}
+
+function readOpenClawConfigValue(path: string): string | null {
+  try {
+    const value = execFileSync(OPENCLAW_BIN, ["config", "get", path], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+    return value || null;
+  } catch {
+    return null;
+  }
+}
+
+function resolveGatewayTokenForSetup(explicitToken?: string): string | null {
+  const direct = explicitToken?.trim();
+  if (direct) return direct;
+
+  const envToken = process.env.OPENCLAW_GATEWAY_TOKEN?.trim();
+  if (envToken) return envToken;
+
+  const configToken = readOpenClawConfigValue("gateway.auth.token")?.trim();
+  if (configToken) return configToken;
+
+  return null;
 }
 
 const cliArgs = process.argv.slice(2);

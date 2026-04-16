@@ -41,7 +41,7 @@ Start server as a background service:
 ```bash
 brew services start openclaw-activity-server
 
-# one-time websocket setup (token + env + restarts)
+# one-time websocket setup (activity-server env only)
 openclaw-activity-server setup
 ```
 
@@ -106,10 +106,16 @@ openclaw-activity-server setup
 
 This command:
 
-- sets `gateway.auth.mode=token`
-- generates/sets a gateway token
+- reads token from `--token`, `OPENCLAW_GATEWAY_TOKEN`, or `openclaw config get gateway.auth.token`
 - writes service env (`OPENCLAW_GATEWAY_TOKEN`, `PATH`) in launch agent
-- restarts OpenClaw gateway and `openclaw-activity-server`
+- does **not** modify OpenClaw config
+- does **not** restart services
+
+Apply changes:
+
+```bash
+brew services restart openclaw-activity-server
+```
 
 Verify:
 
