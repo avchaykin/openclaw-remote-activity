@@ -267,7 +267,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 )
                 let ringPath = NSBezierPath(ovalIn: ringRect)
                 rippleColor.withAlphaComponent(alpha).setStroke()
-                ringPath.lineWidth = max(0.9, 1.8 * (1.0 - (progress * 0.25)))
+                ringPath.lineWidth = max(1.2, 2.4 * (1.0 - (progress * 0.25)))
                 ringPath.stroke()
             }
 
