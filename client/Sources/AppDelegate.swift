@@ -13,6 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private let rippleDuration: TimeInterval = 0.9
     private let rippleSpawnInterval: TimeInterval = 0.75
+    private let dotPulseDuration: TimeInterval = 0.55
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Hide dock icon — menu bar only
@@ -200,7 +201,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         rippleStartTimes.removeAll { now - $0 > rippleDuration }
-        button.image = createRippleImage(now: now, rippleStarts: rippleStartTimes, rippleColor: phaseColor())
+        let dotScale = currentDotScale(now: now)
+        button.image = createRippleImage(
+            now: now,
+            rippleStarts: rippleStartTimes,
+            rippleColor: phaseColor(),
+            dotScale: dotScale
+        )
 
         if !isActive && rippleStartTimes.isEmpty {
             stopAnimation()
@@ -230,18 +237,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return image
     }
 
-    private func createRippleImage(now: TimeInterval, rippleStarts: [TimeInterval]) -> NSImage {
-        createRippleImage(now: now, rippleStarts: rippleStarts, rippleColor: .white)
+    private func currentDotScale(now: TimeInterval) -> CGFloat {
+        guard lastRippleSpawnAt > 0 else { return 1.0 }
+        let elapsed = now - lastRippleSpawnAt
+        guard elapsed >= 0, elapsed <= dotPulseDuration else { return 1.0 }
+
+        let p = elapsed / dotPulseDuration
+        let pulse = sin(.pi * p) // 0 -> 1 -> 0
+        return CGFloat(1.0 - 0.16 * pulse)
     }
 
-    private func createRippleImage(now: TimeInterval, rippleStarts: [TimeInterval], rippleColor: NSColor) -> NSImage {
+    private func createRippleImage(now: TimeInterval, rippleStarts: [TimeInterval]) -> NSImage {
+        createRippleImage(now: now, rippleStarts: rippleStarts, rippleColor: .white, dotScale: 1.0)
+    }
+
+    private func createRippleImage(now: TimeInterval, rippleStarts: [TimeInterval], rippleColor: NSColor, dotScale: CGFloat) -> NSImage {
         let size = NSSize(width: 18, height: 18)
         let center = NSPoint(x: 9, y: 9)
         let image = NSImage(size: size, flipped: false) { _ in
             for start in rippleStarts {
                 let progress = max(0, min(1, (now - start) / self.rippleDuration))
-                let radius = 4.0 + (progress * 6.0)
-                let alpha = 0.55 * (1.0 - progress)
+                let radius = 3.5 + (progress * 7.5)
+                let alpha = 0.88 * pow(1.0 - progress, 0.72)
                 let ringRect = NSRect(
                     x: center.x - radius,
                     y: center.y - radius,
@@ -250,11 +267,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 )
                 let ringPath = NSBezierPath(ovalIn: ringRect)
                 rippleColor.withAlphaComponent(alpha).setStroke()
-                ringPath.lineWidth = max(0.6, 1.2 * (1.0 - (progress * 0.4)))
+                ringPath.lineWidth = max(0.9, 1.8 * (1.0 - (progress * 0.25)))
                 ringPath.stroke()
             }
 
-            let dotRect = NSRect(x: 5, y: 5, width: 8, height: 8)
+            let base = CGFloat(8.0)
+            let dotSize = base * dotScale
+            let dotRect = NSRect(
+                x: center.x - dotSize / 2.0,
+                y: center.y - dotSize / 2.0,
+                width: dotSize,
+                height: dotSize
+            )
             let dotPath = NSBezierPath(ovalIn: dotRect)
             NSColor.white.setFill()
             dotPath.fill()
