@@ -257,8 +257,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let image = NSImage(size: size, flipped: false) { _ in
             for start in rippleStarts {
                 let progress = max(0, min(1, (now - start) / self.rippleDuration))
-                let radius = 3.5 + (progress * 7.5)
-                let alpha = 0.88 * pow(1.0 - progress, 0.72)
+                // Keep ripple visually inside the 18x18 icon and fade before touching bounds
+                let radius = 3.5 + (progress * 5.0)
+                let edgeFade = max(0.0, 1.0 - max(0.0, (radius - 7.6) / 0.9))
+                let alpha = 0.88 * pow(1.0 - progress, 0.72) * edgeFade
                 let ringRect = NSRect(
                     x: center.x - radius,
                     y: center.y - radius,
