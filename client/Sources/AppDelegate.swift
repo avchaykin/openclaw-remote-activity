@@ -205,7 +205,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         button.image = createRippleImage(
             now: now,
             rippleStarts: rippleStartTimes,
-            rippleColor: phaseColor(),
+            rippleColor: .white,
             dotScale: dotScale
         )
 
@@ -218,7 +218,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func createDotImage(color: NSColor, filled: Bool) -> NSImage {
         let size = NSSize(width: 18, height: 18)
         let image = NSImage(size: size, flipped: false) { rect in
-            let dotRect = NSRect(x: 5, y: 5, width: 8, height: 8)
+            let dotRect = NSRect(x: 5.5, y: 5.5, width: 7, height: 7)
             let path = NSBezierPath(ovalIn: dotRect)
 
             if filled {
@@ -273,7 +273,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 ringPath.stroke()
             }
 
-            let base = CGFloat(8.0)
+            let base = CGFloat(7.0)
             let dotSize = base * dotScale
             let dotRect = NSRect(
                 x: center.x - dotSize / 2.0,
@@ -294,18 +294,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return image
     }
 
-    private func phaseColor() -> NSColor {
-        switch activityMonitor.state.currentPhase {
-        case "tooling":
-            return NSColor.systemCyan
-        case "thinking":
-            return NSColor.systemPurple
-        case "responding":
-            return NSColor.systemOrange
-        default:
-            return NSColor.white
-        }
-    }
 }
 
 extension AppDelegate: NSWindowDelegate {
